@@ -147,18 +147,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     void refreshSession();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session) {
-        await fetchProfile(session);
-      } else {
-        setUser(null);
-        setToken(null);
-        setDefaultAddress(null);
-      }
+    let subscription: { unsubscribe: () => void } | null = null;
+    try {
+      const { data } = supabase.auth.onAuthStateChange(async (_event, session) => {
+        if (session) {
+          await fetchProfile(session);
+        } else {
+          setUser(null);
+          setToken(null);
+          setDefaultAddress(null);
+        }
+        setIsLoading(false);
+      });
+      subscription = data.subscription;
+    } catch {
       setIsLoading(false);
-    });
+    }
 
-    return () => subscription.unsubscribe();
+    return () => subscription?.unsubscribe();
   }, []);
 
   const login = (_newToken: string, newUser: User, nextDefaultAddress?: SavedAddress | null) => {

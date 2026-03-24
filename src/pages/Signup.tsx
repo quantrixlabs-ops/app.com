@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { motion } from 'motion/react';
-import { ArrowRight, CheckCircle2, Home, ShieldCheck, ShoppingBag, Sparkles } from 'lucide-react';
+import { ArrowRight, Home, ShieldCheck, ShoppingBag, Sparkles } from 'lucide-react';
 import BrandLogo from '../components/BrandLogo';
 
 const signupHighlights = [
