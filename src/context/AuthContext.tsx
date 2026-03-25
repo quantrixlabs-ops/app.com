@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 
@@ -73,69 +73,81 @@ const buildUserFromProfile = (profile: any): User => ({
   apartment_block: profile.apartment_block || profile.society_name || '',
 });
 
+const serializeAddress = (address: any): SavedAddress => ({
+  id: address.address_id,
+  address_id: address.address_id,
+  recipient_name: address.recipient_name,
+  phone_number: address.phone_number,
+  house_number: address.house_number,
+  street: address.street,
+  area: address.area,
+  city: address.city,
+  state: address.state,
+  postal_code: address.postal_code,
+  country: address.country,
+  latitude: address.latitude,
+  longitude: address.longitude,
+  address_type: address.address_type,
+  is_default: Boolean(address.is_default),
+  location_label: [address.area, address.city].filter(Boolean).join(', ') || address.city || 'Add address',
+  full_address: [address.house_number, address.street, address.area, address.city, address.state, address.postal_code, address.country].filter(Boolean).join(', '),
+});
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [defaultAddress, setDefaultAddress] = useState<SavedAddress | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const initDone = useRef(false);
 
-  const fetchProfile = async (session: Session) => {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', session.user.id)
-      .single();
+  const applySession = async (session: Session | null) => {
+    if (!session) {
+      setUser(null);
+      setToken(null);
+      setDefaultAddress(null);
+      return;
+    }
 
-    if (profile) {
-      const appUser = buildUserFromProfile(profile);
-      setUser(appUser);
-      setToken(session.access_token);
-
-      // Fetch default address
-      const { data: address } = await supabase
-        .from('addresses')
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
         .select('*')
-        .eq('user_id', session.user.id)
-        .order('is_default', { ascending: false })
-        .order('updated_at', { ascending: false })
-        .limit(1)
+        .eq('id', session.user.id)
         .single();
 
-      if (address) {
-        setDefaultAddress({
-          id: address.address_id,
-          address_id: address.address_id,
-          recipient_name: address.recipient_name,
-          phone_number: address.phone_number,
-          house_number: address.house_number,
-          street: address.street,
-          area: address.area,
-          city: address.city,
-          state: address.state,
-          postal_code: address.postal_code,
-          country: address.country,
-          latitude: address.latitude,
-          longitude: address.longitude,
-          address_type: address.address_type,
-          is_default: Boolean(address.is_default),
-          location_label: [address.area, address.city].filter(Boolean).join(', ') || address.city || 'Add address',
-          full_address: [address.house_number, address.street, address.area, address.city, address.state, address.postal_code, address.country].filter(Boolean).join(', '),
-        });
+      if (profile) {
+        setUser(buildUserFromProfile(profile));
+        setToken(session.access_token);
+
+        const { data: address } = await supabase
+          .from('addresses')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .order('is_default', { ascending: false })
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        setDefaultAddress(address ? serializeAddress(address) : null);
+      } else {
+        setUser(null);
+        setToken(null);
+        setDefaultAddress(null);
       }
+    } catch (err) {
+      console.error('AuthContext: failed to load profile', err);
+      setUser(null);
+      setToken(null);
+      setDefaultAddress(null);
     }
   };
 
   const refreshSession = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        await fetchProfile(session);
-      } else {
-        setUser(null);
-        setToken(null);
-        setDefaultAddress(null);
-      }
-    } catch {
+      await applySession(session);
+    } catch (err) {
+      console.error('AuthContext: refreshSession failed', err);
       setUser(null);
       setToken(null);
       setDefaultAddress(null);
@@ -145,26 +157,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
+    if (initDone.current) return;
+    initDone.current = true;
+
+    // 1. Load initial session
     void refreshSession();
 
-    let subscription: { unsubscribe: () => void } | null = null;
-    try {
-      const { data } = supabase.auth.onAuthStateChange(async (_event, session) => {
-        if (session) {
-          await fetchProfile(session);
-        } else {
-          setUser(null);
-          setToken(null);
-          setDefaultAddress(null);
-        }
+    // 2. Listen for auth state changes (login, logout, token refresh)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        // Skip the INITIAL_SESSION event — we handle it above via refreshSession
+        if (event === 'INITIAL_SESSION') return;
+        await applySession(session);
         setIsLoading(false);
-      });
-      subscription = data.subscription;
-    } catch {
-      setIsLoading(false);
-    }
+      },
+    );
 
-    return () => subscription?.unsubscribe();
+    return () => subscription.unsubscribe();
   }, []);
 
   const login = (_newToken: string, newUser: User, nextDefaultAddress?: SavedAddress | null) => {
@@ -174,10 +183,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
-    setToken(null);
-    setUser(null);
-    setDefaultAddress(null);
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error('AuthContext: signOut failed', err);
+    } finally {
+      setToken(null);
+      setUser(null);
+      setDefaultAddress(null);
+    }
   };
 
   return (

@@ -39,7 +39,6 @@ function Navbar() {
               </Link>
               {user.role !== 'admin' ? (
                 <Link
-                  reloadDocument
                   to="/cart"
                   className="inline-flex items-center gap-2 rounded-full border border-gray-100 px-3 py-2 text-sm font-semibold text-gray-700 transition-colors hover:border-rose-200 hover:text-rose-600"
                 >

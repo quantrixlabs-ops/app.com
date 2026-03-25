@@ -324,33 +324,45 @@ export default function MarketplaceDashboard({ role }: MarketplaceDashboardProps
 
   const loadOrders = async () => {
     if (!token) return;
-    const endpoint = role === 'rwa' ? '/api/rwa/orders' : '/api/orders/history';
-    const response = await fetch(endpoint, { headers: { Authorization: `Bearer ${token}` } });
-    const data = await response.json();
-    setOrders(Array.isArray(data) ? data : []);
+    try {
+      const endpoint = role === 'rwa' ? '/api/rwa/orders' : '/api/orders/history';
+      const response = await fetch(endpoint, { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) { setOrders([]); return; }
+      const data = await response.json();
+      setOrders(Array.isArray(data) ? data : []);
+    } catch { setOrders([]); }
   };
 
   const fetchParticipants = async (eventId: number, persist: boolean) => {
     if (!token) return [];
-    const response = await fetch(`/api/group-buy/participants/${eventId}`, { headers: { Authorization: `Bearer ${token}` } });
-    const data = await response.json();
-    const items = Array.isArray(data) ? data : [];
-    if (persist) setParticipants(items);
-    return items;
+    try {
+      const response = await fetch(`/api/group-buy/participants/${eventId}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) return [];
+      const data = await response.json();
+      const items = Array.isArray(data) ? data : [];
+      if (persist) setParticipants(items);
+      return items;
+    } catch { return []; }
   };
 
   const loadEvents = async (productId?: number) => {
     if (role !== 'rwa' || !token) return;
-    const query = productId ? `?productId=${productId}` : '';
-    const response = await fetch(`/api/group-buy/list${query}`, { headers: { Authorization: `Bearer ${token}` } });
-    const data = await response.json();
-    setEvents(Array.isArray(data) ? data : []);
+    try {
+      const query = productId ? `?productId=${productId}` : '';
+      const response = await fetch(`/api/group-buy/list${query}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!response.ok) { setEvents([]); return; }
+      const data = await response.json();
+      setEvents(Array.isArray(data) ? data : []);
+    } catch { setEvents([]); }
   };
 
   useEffect(() => {
     void loadProducts();
-    void loadOrders();
-    void loadEvents();
+    // Load orders and events in background — don't block page render
+    if (token) {
+      void loadOrders();
+      void loadEvents();
+    }
   }, [role, token, user?.society_name]);
 
   const catalogProducts: CatalogProduct[] = products.map((product) => {

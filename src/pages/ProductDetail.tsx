@@ -146,21 +146,26 @@ export default function ProductDetail() {
       setCommunityEvents([]);
       return;
     }
-
-    const response = await fetch(`/api/group-buy/list?productId=${productDbId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const data = await response.json();
-    setCommunityEvents(Array.isArray(data) ? data : []);
+    try {
+      const response = await fetch(`/api/group-buy/list?productId=${productDbId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) { setCommunityEvents([]); return; }
+      const data = await response.json();
+      setCommunityEvents(Array.isArray(data) ? data : []);
+    } catch { setCommunityEvents([]); }
   };
 
   const loadParticipants = async (eventId: number) => {
     if (!token) return;
-    const response = await fetch(`/api/group-buy/participants/${eventId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const data = await response.json();
-    setParticipants(Array.isArray(data) ? data : []);
+    try {
+      const response = await fetch(`/api/group-buy/participants/${eventId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) return;
+      const data = await response.json();
+      setParticipants(Array.isArray(data) ? data : []);
+    } catch { /* silently fail */ }
   };
 
   useEffect(() => {
@@ -196,7 +201,7 @@ export default function ProductDetail() {
     };
 
     void loadProductData();
-  }, [id, token, user?.role, routedProduct]);
+  }, [id]);
 
   useEffect(() => () => window.clearTimeout(addTimer.current), []);
   useEffect(() => {

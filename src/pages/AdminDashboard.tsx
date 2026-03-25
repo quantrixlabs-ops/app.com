@@ -231,6 +231,7 @@ export default function AdminDashboard() {
       }
       if (activeTab === 'orders') {
         const res = await fetch('/api/admin/orders', { headers });
+        if (!res.ok) { setOrders([]); return; }
         const data = await res.json().catch(() => []);
         setOrders(Array.isArray(data) ? data : []);
         return;

@@ -105,9 +105,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
     setIsLoadingCart(true);
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+
       const response = await fetch('/api/cart', {
         headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
 
       if (!response.ok) {
         resetCartState();
@@ -115,7 +120,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       }
 
       syncCartState(await response.json());
-    } catch {
+    } catch (err) {
+      console.error('CartContext: refreshCart failed', err);
       resetCartState();
     } finally {
       setIsLoadingCart(false);
