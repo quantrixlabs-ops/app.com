@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
+import { supabase } from '../lib/supabase';
 import {
   Calendar,
   Check,
@@ -310,9 +311,15 @@ export default function MarketplaceDashboard({ role }: MarketplaceDashboardProps
   };
 
   const loadProducts = async () => {
-    const response = await fetch('/api/products');
-    const data = await response.json();
-    setProducts(Array.isArray(data) ? data : []);
+    const { data, error } = await supabase.from('products').select('*').order('id');
+    if (!error && data) {
+      setProducts(data.map((p: any) => ({
+        ...p,
+        productId: p.product_id || `FASHIONNEST-${String(p.id).padStart(4, '0')}`,
+        name: p.title,
+        image: p.image_url,
+      })));
+    }
   };
 
   const loadOrders = async () => {

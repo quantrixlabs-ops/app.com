@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { Download, LogOut, Package, PencilLine, Plus, ShoppingCart, Sparkles, Star, TicketPercent, UploadCloud, Users } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
 
 type ProductForm = {
   productId: string;
@@ -224,9 +225,8 @@ export default function AdminDashboard() {
   const fetchData = async () => {
     try {
       if (activeTab === 'products') {
-        const res = await fetch('/api/products');
-        const data = await res.json().catch(() => []);
-        setProducts(Array.isArray(data) ? data : []);
+        const { data } = await supabase.from('products').select('*').order('id');
+        setProducts((data || []).map((p: any) => ({ ...p, productId: p.product_id || `FASHIONNEST-${String(p.id).padStart(4, '0')}`, name: p.title, image: p.image_url })));
         return;
       }
       if (activeTab === 'orders') {
@@ -236,13 +236,13 @@ export default function AdminDashboard() {
         return;
       }
       if (activeTab === 'rwa') {
-        const [usersRes, productsRes, eventsRes] = await Promise.all([
+        const [usersRes, productsResult, eventsRes] = await Promise.all([
           fetch('/api/admin/users', { headers }),
-          fetch('/api/products'),
+          supabase.from('products').select('*').order('id'),
           fetch('/api/group-buy/list', { headers }),
         ]);
         const fetchedUsers = await usersRes.json().catch(() => []);
-        const fetchedProducts = await productsRes.json().catch(() => []);
+        const fetchedProducts = (productsResult.data || []).map((p: any) => ({ ...p, productId: p.product_id || `FASHIONNEST-${String(p.id).padStart(4, '0')}`, name: p.title, image: p.image_url }));
         const fetchedEvents = await eventsRes.json().catch(() => []);
         setUsers((Array.isArray(fetchedUsers) ? fetchedUsers : []).filter((user: any) => user.role === 'rwa'));
         setProducts(Array.isArray(fetchedProducts) ? fetchedProducts : []);

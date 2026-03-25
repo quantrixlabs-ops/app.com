@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { ArrowLeft, Check, Clock3, Copy, Heart, Loader2, LockKeyhole, MessageCircleMore, ShieldCheck, ShoppingCart, Star, Truck, Users } from 'lucide-react';
 import { useCart } from '../context/CartContext';
+import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import ProductImage from '../components/ProductImage';
 import LiveActivity from '../components/LiveActivity';
@@ -168,14 +169,15 @@ export default function ProductDetail() {
     const loadProductData = async () => {
       setIsLoadingProduct(!routedProduct);
       try {
-        const [productResponse, productsResponse] = await Promise.all([
-          fetch(`/api/products/${id}`),
-          fetch('/api/products'),
+        const [productResult, productsResult] = await Promise.all([
+          /^\d+$/.test(String(id))
+            ? supabase.from('products').select('*').eq('id', Number(id)).single()
+            : supabase.from('products').select('*').eq('product_id', id).single(),
+          supabase.from('products').select('*').order('id'),
         ]);
-        const productData = await productResponse.json().catch(() => null);
-        const productsData = await productsResponse.json().catch(() => []);
-        const resolvedProductResponse = productResponse.ok && productData ? (productData as Product) : null;
-        const catalogProducts = Array.isArray(productsData) ? productsData : [];
+        const productData = productResult.data;
+        const resolvedProductResponse = productData ? { ...productData, productId: productData.product_id || `FASHIONNEST-${String(productData.id).padStart(4, '0')}`, name: productData.title, image: productData.image_url } as Product : null;
+        const catalogProducts = (productsResult.data || []).map((p: any) => ({ ...p, productId: p.product_id || `FASHIONNEST-${String(p.id).padStart(4, '0')}`, name: p.title, image: p.image_url }));
         setProducts(catalogProducts);
 
         const matchedProduct = catalogProducts.find((candidate: Product) => candidate.productId === id || String(candidate.id) === id);
