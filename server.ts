@@ -1,11 +1,8 @@
-import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import cors from 'cors';
 import multer from 'multer';
-import Razorpay from 'razorpay';
-import { v2 as cloudinary } from 'cloudinary';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
@@ -567,6 +564,7 @@ app.delete('/api/addresses/:id', authenticateToken, authorizeRole(['customer', '
 
 app.post('/api/payments/create-order', authenticateToken, async (req: any, res) => {
   try {
+    const { default: Razorpay } = await import('razorpay');
     const razorpay = new Razorpay({ key_id: process.env.RAZORPAY_KEY_ID || '', key_secret: process.env.RAZORPAY_KEY_SECRET || '' });
     const order = await razorpay.orders.create({ amount: Math.round(Number(req.body.amount) * 100), currency: 'INR', receipt: `order_${Date.now()}` });
     res.json(order);
@@ -705,6 +703,7 @@ app.post('/api/orders/:id/pay-online/create-order', authenticateToken, authorize
   if (!canConvertCodOrder(order)) return res.status(400).json({ error: 'This order cannot be converted to online payment.' });
 
   try {
+    const { default: Razorpay } = await import('razorpay');
     const razorpay = new Razorpay({ key_id: process.env.RAZORPAY_KEY_ID || '', key_secret: process.env.RAZORPAY_KEY_SECRET || '' });
     const rpOrder = await razorpay.orders.create({ amount: Math.round(Number(order.total_price) * 100), currency: 'INR', receipt: `convert_${order.id}_${Date.now()}` });
     res.json(rpOrder);
