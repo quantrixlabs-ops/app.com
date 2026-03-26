@@ -69,7 +69,7 @@ export default function Cart() {
         payment_status: paymentStatus,
         razorpay_order_id: rzpOrderId,
         razorpay_payment_id: rzpPaymentId,
-        address_id: defaultAddress?.id,
+        addressId: defaultAddress?.id,
       }),
     });
 
@@ -131,7 +131,7 @@ export default function Cart() {
             }),
           });
           const verifyData = await verifyRes.json();
-          if (verifyData.status === 'success') {
+          if (verifyData.verified === true) {
             await createSystemOrder('Paid', 'ONLINE', response.razorpay_order_id, response.razorpay_payment_id);
           } else {
             setCouponMessage({ tone: 'error', text: 'Payment verification failed.' });

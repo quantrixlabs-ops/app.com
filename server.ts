@@ -349,55 +349,62 @@ app.get('/api/products/:id/social-proof', async (req, res) => {
 
 // ── CART ROUTES ───────────────────────────────────────────────────────────────
 
+const emptyCart = { items: [], summary: { subtotal: 0, communityDiscount: 0, discountedSubtotalBeforeCoupon: 0, couponDiscount: 0, discountedSubtotal: 0, tax: 0, total: 0 }, appliedCoupon: null, itemCount: 0 };
+
 const buildCartSnapshot = async (user: any) => {
-  const { data: cartRows } = await supabase
-    .from('cart_items')
-    .select('quantity, product_id')
-    .eq('user_id', user.id)
-    .eq('user_role', user.role)
-    .order('created_at', { ascending: false });
+  try {
+    const { data: cartRows } = await supabase
+      .from('cart_items')
+      .select('quantity, product_id')
+      .eq('user_id', user.id)
+      .eq('user_role', user.role)
+      .order('created_at', { ascending: false });
 
-  if (!cartRows || cartRows.length === 0) {
-    return { items: [], summary: { subtotal: 0, communityDiscount: 0, discountedSubtotalBeforeCoupon: 0, couponDiscount: 0, discountedSubtotal: 0, tax: 0, total: 0 }, appliedCoupon: null, itemCount: 0 };
-  }
-
-  const productIds = cartRows.map((r: any) => r.product_id);
-  const { data: products } = await supabase.from('products').select('*').in('id', productIds);
-  const productMap = new Map((products || []).map((p: any) => [p.id, p]));
-
-  const items = cartRows.map((row: any) => {
-    const product: any = productMap.get(row.product_id);
-    if (!product) return null;
-    const serialized = serializeProduct(product);
-    const quantity = Number(row.quantity || 1);
-    const lineSubtotal = roundCurrency(Number(product.price || 0) * quantity);
-    return { ...serialized, quantity, community_discount_percentage: 0, community_discount_amount: 0, community_discount_applied: false, community_event_id: null, line_subtotal: lineSubtotal, line_total: lineSubtotal };
-  }).filter(Boolean);
-
-  const subtotal = roundCurrency(items.reduce((sum: number, item: any) => sum + Number(item.line_subtotal || 0), 0));
-  const communityDiscount = 0;
-  const discountedSubtotalBeforeCoupon = subtotal;
-
-  let appliedCoupon: any = null;
-  let couponDiscount = 0;
-
-  const { data: storedCoupon } = await supabase.from('cart_coupon_applications').select('coupon_code').eq('user_id', user.id).eq('user_role', user.role).limit(1).single();
-
-  if (storedCoupon?.coupon_code) {
-    const { data: coupon } = await supabase.from('coupons').select('*').ilike('coupon_code', storedCoupon.coupon_code).single();
-    if (coupon && new Date(coupon.expiry_date).getTime() >= Date.now() && Number(coupon.current_usage || 0) < Number(coupon.max_usage || 0) && discountedSubtotalBeforeCoupon >= Number(coupon.minimum_order_value || 0)) {
-      const rawDiscount = coupon.discount_type === 'percentage' ? discountedSubtotalBeforeCoupon * (Number(coupon.discount_value || 0) / 100) : Number(coupon.discount_value || 0);
-      couponDiscount = roundCurrency(Math.min(discountedSubtotalBeforeCoupon, rawDiscount));
-      appliedCoupon = { coupon_code: coupon.coupon_code, discount_type: coupon.discount_type, discount_value: coupon.discount_value, user_type: coupon.user_type };
+    if (!cartRows || cartRows.length === 0) {
+      return emptyCart;
     }
+
+    const productIds = cartRows.map((r: any) => r.product_id);
+    const { data: products } = await supabase.from('products').select('*').in('id', productIds);
+    const productMap = new Map((products || []).map((p: any) => [p.id, p]));
+
+    const items = cartRows.map((row: any) => {
+      const product: any = productMap.get(row.product_id);
+      if (!product) return null;
+      const serialized = serializeProduct(product);
+      const quantity = Number(row.quantity || 1);
+      const lineSubtotal = roundCurrency(Number(product.price || 0) * quantity);
+      return { ...serialized, quantity, community_discount_percentage: 0, community_discount_amount: 0, community_discount_applied: false, community_event_id: null, line_subtotal: lineSubtotal, line_total: lineSubtotal };
+    }).filter(Boolean);
+
+    const subtotal = roundCurrency(items.reduce((sum: number, item: any) => sum + Number(item.line_subtotal || 0), 0));
+    const communityDiscount = 0;
+    const discountedSubtotalBeforeCoupon = subtotal;
+
+    let appliedCoupon: any = null;
+    let couponDiscount = 0;
+
+    const { data: storedCoupon } = await supabase.from('cart_coupon_applications').select('coupon_code').eq('user_id', user.id).eq('user_role', user.role).limit(1).maybeSingle();
+
+    if (storedCoupon?.coupon_code) {
+      const { data: coupon } = await supabase.from('coupons').select('*').ilike('coupon_code', storedCoupon.coupon_code).maybeSingle();
+      if (coupon && new Date(coupon.expiry_date).getTime() >= Date.now() && Number(coupon.current_usage || 0) < Number(coupon.max_usage || 0) && discountedSubtotalBeforeCoupon >= Number(coupon.minimum_order_value || 0)) {
+        const rawDiscount = coupon.discount_type === 'percentage' ? discountedSubtotalBeforeCoupon * (Number(coupon.discount_value || 0) / 100) : Number(coupon.discount_value || 0);
+        couponDiscount = roundCurrency(Math.min(discountedSubtotalBeforeCoupon, rawDiscount));
+        appliedCoupon = { coupon_code: coupon.coupon_code, discount_type: coupon.discount_type, discount_value: coupon.discount_value, user_type: coupon.user_type };
+      }
+    }
+
+    const discountedSubtotal = roundCurrency(discountedSubtotalBeforeCoupon - couponDiscount);
+    const tax = roundCurrency(discountedSubtotal * 0.05);
+    const total = roundCurrency(discountedSubtotal + tax);
+    const itemCount = items.reduce((sum: number, item: any) => sum + Number(item.quantity || 0), 0);
+
+    return { items, summary: { subtotal, communityDiscount, discountedSubtotalBeforeCoupon, couponDiscount, discountedSubtotal, tax, total }, appliedCoupon, itemCount };
+  } catch (err) {
+    console.error('buildCartSnapshot error:', err);
+    return emptyCart;
   }
-
-  const discountedSubtotal = roundCurrency(discountedSubtotalBeforeCoupon - couponDiscount);
-  const tax = roundCurrency(discountedSubtotal * 0.05);
-  const total = roundCurrency(discountedSubtotal + tax);
-  const itemCount = items.reduce((sum: number, item: any) => sum + Number(item.quantity || 0), 0);
-
-  return { items, summary: { subtotal, communityDiscount, discountedSubtotalBeforeCoupon, couponDiscount, discountedSubtotal, tax, total }, appliedCoupon, itemCount };
 };
 
 app.get('/api/cart', authenticateToken, authorizeRole(['customer', 'rwa']), async (req: any, res) => {
